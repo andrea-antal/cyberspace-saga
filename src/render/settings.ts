@@ -1,4 +1,4 @@
-import { appState, loadApiKey, saveApiKey, loadAccountToken, saveAccountToken, isOwnJournal, persist, loadByokModel, saveByokModel } from '../state';
+import { appState, loadApiKey, saveApiKey, loadAccountToken, saveAccountToken, isOwnJournal, persist, loadByokModel, saveByokModel, loadRememberApiKey, saveRememberApiKey } from '../state';
 import { render } from '../main';
 import { escAttr } from '../util';
 import { createAccount, saveToCloud, loadFromCloud } from '../cloud';
@@ -12,13 +12,17 @@ export function renderSettings($page: HTMLElement): void {
   // --- API Key section ---
   html += '<div style="margin-bottom:24px;">';
   html += '<div style="font-size:14px;font-weight:bold;margin-bottom:8px;">Anthropic API Key</div>';
-  html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">Required for AI features. Your key is stored in your browser only — never sent to our servers. Get one at <a href="https://console.anthropic.com" target="_blank" style="color:var(--choice-red)">console.anthropic.com</a></div>';
+  html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">Required for AI features. Saved in your browser. Proxied through our server to reach Anthropic — we never log or store your key. Get one at <a href="https://console.anthropic.com" target="_blank" style="color:var(--choice-red)">console.anthropic.com</a></div>';
 
   if (key) {
     html += `<div style="font-size:13px;color:var(--text-light);margin-bottom:8px;">Current key: <code>${masked}</code></div>`;
   }
 
   html += `<input type="password" class="edit-textarea choice-input" id="api-key-input" value="${escAttr(key)}" placeholder="sk-ant-..." style="width:100%;height:40px;font-family:monospace;font-size:14px;">`;
+  const rememberChecked = loadRememberApiKey();
+  html += `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:14px;color:var(--text-light);cursor:pointer;">`;
+  html += `<input type="checkbox" id="remember-api-key" data-action="toggle-remember-key" ${rememberChecked ? 'checked' : ''} style="cursor:pointer;">`;
+  html += `Remember this key across sessions</label>`;
   html += '<div style="margin-top:10px;display:flex;gap:8px;">';
   html += '<button class="btn btn-active btn-small" data-action="save-api-key">Save Key</button>';
   if (key) {
@@ -77,6 +81,15 @@ export function renderSettings($page: HTMLElement): void {
   html += '</div>';
 
   $page.innerHTML = html;
+}
+
+export function handleToggleRememberKey(): void {
+  const checkbox = document.getElementById('remember-api-key') as HTMLInputElement;
+  if (!checkbox) return;
+  saveRememberApiKey(checkbox.checked);
+  // Re-save the key to move it between storages
+  const currentKey = loadApiKey();
+  if (currentKey) saveApiKey(currentKey);
 }
 
 export function handleSaveApiKey(): void {

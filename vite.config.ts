@@ -50,9 +50,17 @@ function apiProxy(): Plugin {
           });
 
           if (!response.ok) {
-            const errBody = await response.text();
-            res.writeHead(response.status, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: errBody }));
+            const status = response.status;
+            if (status === 401) {
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid API key' }));
+            } else if (status === 429) {
+              res.writeHead(429, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Rate limited — try again shortly' }));
+            } else {
+              res.writeHead(status, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: `Anthropic API error (${status})` }));
+            }
             return;
           }
 
@@ -60,9 +68,9 @@ function apiProxy(): Plugin {
           const content = (data as any).content?.[0]?.text || '';
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ content }));
-        } catch (e: any) {
+        } catch (_e) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message || 'Internal error' }));
+          res.end(JSON.stringify({ error: 'Internal error' }));
         }
       });
 

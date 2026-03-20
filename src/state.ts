@@ -2,6 +2,7 @@ import type { AppState, ViewState, Journal, Page, InterviewState, SharedJournalM
 
 const STORAGE_KEY = 'cyoa-decision-journal';
 const API_KEY_KEY = 'cyoa-api-key';
+const REMEMBER_KEY_KEY = 'cyoa-remember-api-key';
 const ACCOUNT_TOKEN_KEY = 'cyoa-account-token';
 const SHARED_JOURNALS_KEY = 'cyoa-shared-journals';
 const BYOK_MODEL_KEY = 'cyoa-byok-model';
@@ -34,15 +35,34 @@ export function saveState(state: AppState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+export function loadRememberApiKey(): boolean {
+  return localStorage.getItem(REMEMBER_KEY_KEY) === 'true';
+}
+
+export function saveRememberApiKey(remember: boolean): void {
+  if (remember) {
+    localStorage.setItem(REMEMBER_KEY_KEY, 'true');
+  } else {
+    localStorage.removeItem(REMEMBER_KEY_KEY);
+  }
+}
+
 export function loadApiKey(): string {
-  return localStorage.getItem(API_KEY_KEY) || '';
+  // Check localStorage first (persisted), then sessionStorage (session-only)
+  return localStorage.getItem(API_KEY_KEY) || sessionStorage.getItem(API_KEY_KEY) || '';
 }
 
 export function saveApiKey(key: string): void {
+  // Always clear both storages first
+  localStorage.removeItem(API_KEY_KEY);
+  sessionStorage.removeItem(API_KEY_KEY);
+
   if (key) {
-    localStorage.setItem(API_KEY_KEY, key);
-  } else {
-    localStorage.removeItem(API_KEY_KEY);
+    if (loadRememberApiKey()) {
+      localStorage.setItem(API_KEY_KEY, key);
+    } else {
+      sessionStorage.setItem(API_KEY_KEY, key);
+    }
   }
 }
 

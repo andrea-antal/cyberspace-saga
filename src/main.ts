@@ -3,7 +3,7 @@ import { renderShelf, openJournal, deleteJournal, createJournal, createJournalFr
 import { renderPageView, renderPageEdit, saveEdit, addChoice, removeChoice, deletePage, getPendingKernelText, clearPendingKernelText } from './render/page';
 import { renderMap } from './render/map';
 import { renderInput, submitSituation, submitAnswer, skipInterview, regenerateFromKernel } from './render/input';
-import { renderSettings, handleSaveApiKey, handleClearApiKey, handleToggleByokModel, handleGenerateAccountToken, handleSaveToCloud, handleLoadFromCloud, handleCopyAccountToken, handleDisconnectAccount } from './render/settings';
+import { renderSettings, handleSaveApiKey, handleClearApiKey, handleToggleByokModel, handleToggleRememberKey, handleGenerateAccountToken, handleSaveToCloud, handleLoadFromCloud, handleCopyAccountToken, handleDisconnectAccount } from './render/settings';
 import { renderBookmarks, addBookmark, removeBookmark } from './render/bookmarks';
 import { regeneratePage } from './ai/client';
 import { parseRegeneratedPage } from './ai/parser';
@@ -281,6 +281,9 @@ document.addEventListener('click', (e) => {
       break;
     case 'clear-api-key':
       handleClearApiKey();
+      break;
+    case 'toggle-remember-key':
+      handleToggleRememberKey();
       break;
     case 'toggle-byok-model':
       if (target.dataset.model === 'sonnet' || target.dataset.model === 'opus') {

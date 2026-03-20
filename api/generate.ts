@@ -32,14 +32,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      return res.status(response.status).json({ error: body });
+      const status = response.status;
+      // Return generic error messages to avoid leaking upstream details
+      if (status === 401) return res.status(401).json({ error: 'Invalid API key' });
+      if (status === 429) return res.status(429).json({ error: 'Rate limited — try again shortly' });
+      return res.status(status).json({ error: `Anthropic API error (${status})` });
     }
 
     const data = await response.json();
     const content = data.content?.[0]?.text || '';
     return res.status(200).json({ content });
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message || 'Internal error' });
+  } catch (_e) {
+    return res.status(500).json({ error: 'Internal error' });
   }
 }
