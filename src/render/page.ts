@@ -4,9 +4,87 @@ import { esc, escAttr } from '../util';
 import type { Page } from '../types';
 import { updateShared } from '../cloud';
 
+let _pendingKernelText: string | null = null;
+
+export function getPendingKernelText(): string | null { return _pendingKernelText; }
+export function clearPendingKernelText(): void { _pendingKernelText = null; }
+
+function renderKernelView($page: HTMLElement): void {
+  const j = getJournal();
+  if (!j) { viewState.view = 'shelf'; render(); return; }
+
+  let html = '<div class="nav-bar">';
+  html += '<span></span>';
+  html += `<span class="nav-title" data-action="go-map">${esc(j.title)}</span>`;
+  html += '</div>';
+
+  const kernelText = j.situation || 'No situation recorded for this adventure.';
+  html += `<div class="page-content page-paper-fact">${esc(kernelText)}</div>`;
+
+  html += '<div class="page-choices">';
+  html += '<div class="page-choice">';
+  html += '&#10040; Begin the adventure, ';
+  html += '<a data-action="go-page" data-page="1"><span class="turn-text">turn to page 1.</span></a>';
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div class="page-actions">';
+  if (canEdit(j.id)) {
+    html += '<button class="btn-link" data-action="enter-edit">Edit</button>';
+  }
+  html += '</div>';
+
+  html += '<div class="page-number">&mdash; 0 &mdash;</div>';
+  $page.innerHTML = html;
+}
+
+function renderKernelEdit($page: HTMLElement): void {
+  const j = getJournal();
+  if (!j) return;
+  if (!canEdit(j.id)) {
+    viewState.editMode = false;
+    renderKernelView($page);
+    return;
+  }
+
+  let html = '<div class="edit-bar">';
+  html += '<span class="nav-link" data-action="cancel-edit">&larr; Cancel</span>';
+  html += '<button class="btn btn-primary btn-small" data-action="save-edit">Done</button>';
+  html += '</div>';
+
+  html += `<textarea class="edit-textarea" id="edit-content" style="min-height:200px" placeholder="Describe your situation...">${esc(j.situation || '')}</textarea>`;
+
+  html += '<div class="page-number">&mdash; 0 &mdash;</div>';
+  $page.innerHTML = html;
+}
+
+export function saveKernelEdit(): void {
+  const j = getJournal();
+  if (!j) return;
+
+  const contentEl = document.getElementById('edit-content') as HTMLTextAreaElement;
+  if (!contentEl) return;
+
+  const newText = contentEl.value.trim();
+  const oldText = (j.situation || '').trim();
+
+  if (newText === oldText) {
+    viewState.editMode = false;
+    render();
+    return;
+  }
+
+  _pendingKernelText = newText;
+  const modal = document.getElementById('regen-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
 export function renderPageView($page: HTMLElement): void {
   const j = getJournal();
   if (!j) { viewState.view = 'shelf'; render(); return; }
+
+  if (viewState.currentPage === 0) { renderKernelView($page); return; }
+
   const pg = j.pages[viewState.currentPage];
   if (!pg) { viewState.view = 'shelf'; render(); return; }
 
@@ -17,6 +95,8 @@ export function renderPageView($page: HTMLElement): void {
   let html = '<div class="nav-bar">';
   if (prevPage !== null) {
     html += `<span class="nav-link" data-action="go-back">&larr; p.${prevPage}</span>`;
+  } else if (viewState.currentPage === 1) {
+    html += `<span class="nav-link" data-action="go-page" data-page="0">&larr; p.0</span>`;
   } else {
     html += '<span></span>';
   }
@@ -91,6 +171,8 @@ export function renderPageView($page: HTMLElement): void {
 }
 
 export function renderPageEdit($page: HTMLElement): void {
+  if (viewState.currentPage === 0) { renderKernelEdit($page); return; }
+
   const j = getJournal();
   if (!j) return;
   if (!canEdit(j.id)) {
@@ -140,6 +222,8 @@ export function renderPageEdit($page: HTMLElement): void {
 }
 
 export function saveEdit(): void {
+  if (viewState.currentPage === 0) { saveKernelEdit(); return; }
+
   const j = getJournal();
   if (!j) return;
   const pg = j.pages[viewState.currentPage];

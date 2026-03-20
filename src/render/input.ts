@@ -9,18 +9,16 @@ export function renderInput($page: HTMLElement): void {
   const j = getJournal();
   if (!j) { viewState.view = 'shelf'; render(); return; }
 
-  let html = '<div class="nav-bar">';
-  html += '<span class="nav-link" data-action="go-shelf">&larr; All decisions</span>';
-  html += '</div>';
+  let html = '';
 
-  html += '<div style="font-size:18px;font-weight:bold;margin-bottom:6px;">Describe your situation</div>';
+  html += `<div style="font-size:18px;font-weight:bold;margin-bottom:16px;">${esc(j.title)}</div>`;
+  html += '<div style="font-size:16px;font-weight:bold;margin-bottom:6px;">Describe your situation</div>';
   html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:14px;">Tell me everything about this decision. What do you know? What are you unsure about? What matters to you?</div>';
 
   if (interviewState.phase === 'input') {
     html += `<textarea class="edit-textarea" id="situation-input" style="min-height:200px" placeholder="I'm deciding whether to...">${esc(interviewState.situation)}</textarea>`;
     html += '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">';
-    html += '<button class="btn" data-action="go-shelf">I\'ll write it myself</button>';
-    html += '<button class="btn btn-primary" data-action="submit-situation">Explore this</button>';
+    html += '<button class="btn btn-primary" data-action="submit-situation">Generate adventure!</button>';
     html += '</div>';
   } else if (interviewState.phase === 'waiting') {
     // Show user's message + thinking indicator while waiting for AI questions
@@ -40,9 +38,10 @@ export function renderInput($page: HTMLElement): void {
     html += '</div>';
   } else if (interviewState.phase === 'generating') {
     html += renderConversation();
-    html += '<div style="text-align:center;padding:30px 0;color:var(--text-light);font-style:italic;">';
-    html += 'Mapping out your possible futures';
-    html += '<span class="generating-dots"><span>.</span><span>.</span><span>.</span></span>';
+    html += '<div class="generating-state">';
+    html += '<div class="generating-icon">🔮</div>';
+    html += '<div class="generating-label">Mapping out your possible futures <span class="sparkle">✨</span></div>';
+    html += '<div class="generating-bar"><div class="generating-bar-fill"></div></div>';
     html += '</div>';
   } else if (interviewState.phase === 'done') {
     html += '<div style="text-align:center;padding:20px 0;">';
@@ -58,16 +57,34 @@ export function renderInput($page: HTMLElement): void {
   $page.innerHTML = html;
 }
 
+function scrollToLatestAssistant(): void {
+  requestAnimationFrame(() => {
+    const el = document.querySelector('.interview-ai-response');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+function formatAssistant(text: string): string {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function renderConversation(): string {
+  // User messages go in the conversation block
   let html = '<div class="interview-conversation">';
   for (const msg of interviewState.conversation) {
     if (msg.role === 'user') {
       html += `<div class="interview-msg interview-user"><strong>You:</strong> ${esc(msg.content)}</div>`;
-    } else {
-      html += `<div class="interview-msg interview-assistant">${esc(msg.content)}</div>`;
     }
   }
   html += '</div>';
+
+  // Latest AI response rendered separately below
+  const assistantMsgs = interviewState.conversation.filter(m => m.role === 'assistant');
+  if (assistantMsgs.length > 0) {
+    const latest = assistantMsgs[assistantMsgs.length - 1];
+    html += `<div class="interview-ai-response"><span class="ai-response-icon">🤖</span>${formatAssistant(latest.content)}</div>`;
+  }
+
   return html;
 }
 
@@ -92,6 +109,7 @@ export async function submitSituation(): Promise<void> {
     interviewState.conversation.push({ role: 'assistant', content: response });
     interviewState.phase = 'interviewing';
     render();
+    scrollToLatestAssistant();
   } catch (e: any) {
     interviewState.error = e.message || 'Failed to connect to AI. Check your API key in Settings.';
     interviewState.phase = 'input';
@@ -124,6 +142,7 @@ export async function submitAnswer(): Promise<void> {
     interviewState.conversation.push({ role: 'assistant', content: response });
     interviewState.phase = 'interviewing';
     render();
+    scrollToLatestAssistant();
   } catch (e: any) {
     interviewState.error = e.message || 'Failed to connect to AI.';
     interviewState.phase = 'interviewing';
@@ -132,6 +151,13 @@ export async function submitAnswer(): Promise<void> {
 }
 
 export async function skipInterview(): Promise<void> {
+  interviewState.error = undefined;
+  await doGenerate();
+}
+
+export async function regenerateFromKernel(situation: string): Promise<void> {
+  interviewState.situation = situation;
+  interviewState.conversation = [{ role: 'user', content: situation }];
   interviewState.error = undefined;
   await doGenerate();
 }

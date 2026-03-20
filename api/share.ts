@@ -17,8 +17,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!account || !account.journalIds.includes(journalId)) {
           return res.status(403).json({ error: 'Account does not own this journal' });
         }
+        // Return existing token if one already exists for this journal
+        const existing = await kv.get<string>(`share-by-journal:${journalId}`);
+        if (existing) {
+          const existingShare = await kv.get(`share:${existing}`);
+          if (existingShare) {
+            return res.status(200).json({ shareToken: existing });
+          }
+        }
         const token = nanoid(6);
         await kv.set(`share:${token}`, { journalId, createdBy: accountToken });
+        await kv.set(`share-by-journal:${journalId}`, token);
         return res.status(200).json({ shareToken: token });
       }
       case 'import': {

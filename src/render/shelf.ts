@@ -12,7 +12,7 @@ export function renderShelf($page: HTMLElement): void {
 
 
   if (appState.journals.length === 0) {
-    html += '<div class="shelf-empty">No decisions yet.<br>Every adventure begins with a choice.</div>';
+    html += '<div class="shelf-empty">You are the hero of your own adventure. Choose wisely, for you may discover pathways to outcomes you never would have dreamed of...</div>';
   } else {
     html += '<ul class="shelf-list">';
     appState.journals.forEach(j => {
@@ -30,30 +30,16 @@ export function renderShelf($page: HTMLElement): void {
           <div class="shelf-item-title">&#10040; ${esc(j.title)}${badge}</div>
           <div class="shelf-item-meta">${date} &middot; ${pageCount} page${pageCount !== 1 ? 's' : ''} &middot; ${pathCount} path${pathCount !== 1 ? 's' : ''}</div>
         </div>`;
-      if (isOwnJournal(j.id)) {
-        html += `<span class="shelf-item-share" data-action="share-journal" data-id="${j.id}">Share</span>`;
-      }
-      if (canDelete(j.id)) {
-        html += `<span class="shelf-item-delete" data-action="delete-journal" data-id="${j.id}" title="Delete">&times;</span>`;
-      }
       html += `</li>`;
     });
     html += '</ul>';
   }
 
-  // Import shared section
-  html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--cream-dark);">';
-  html += '<div style="font-size:14px;color:var(--text-light);margin-bottom:6px;">Import a shared decision</div>';
-  html += '<div style="display:flex;gap:8px;">';
-  html += '<input type="text" class="edit-textarea choice-input" id="import-share-input" placeholder="Paste share token" style="flex:1;height:40px;">';
-  html += '<button class="btn btn-small" data-action="import-shared">Import</button>';
-  html += '</div>';
-  html += '</div>';
-
   html += '<div class="shelf-new">';
-  html += '<button class="btn btn-primary" data-action="show-modal">New Decision</button>';
-  html += '<button class="btn" data-action="show-ai-modal">Explore with AI</button>';
-  html += '<button class="btn btn-ghost btn-small" data-action="go-settings">Settings</button>';
+  html += '<button class="btn btn-primary" data-action="show-ai-modal">New Adventure</button>';
+  html += '</div>';
+  html += '<div style="text-align:center;margin-top:8px;">';
+  html += '<button class="btn-link" style="font-size:12px;" data-action="go-settings">Settings</button>';
   html += '</div>';
   html += '</div>';
   $page.innerHTML = html;
@@ -79,7 +65,6 @@ export function openJournal(id: string): void {
 export function deleteJournal(id: string): void {
   const j = getJournal(id);
   if (!j) return;
-  if (!confirm(`Delete "${j.title}"? This can't be undone.`)) return;
   appState.journals = appState.journals.filter(x => x.id !== id);
   if (appState.activeJournalId === id) appState.activeJournalId = null;
   persist();
@@ -166,12 +151,16 @@ export async function handleShareJournal(id: string): Promise<void> {
     alert('Create a cloud backup first (Settings > Cloud Backup) to share decisions.');
     return;
   }
+  const $content = document.getElementById('share-modal-content')!;
+  $content.innerHTML = '<div style="text-align:center;padding:16px 0;color:var(--text-light);font-style:italic;">Generating share link...</div>';
+  document.getElementById('share-modal')!.style.display = 'flex';
+
   try {
-    // Sync to cloud first to ensure journal exists there
     const ownJournals = appState.journals.filter(j => isOwnJournal(j.id));
-    await saveToCloud(accountToken, ownJournals);
-    const token = await createShareToken(accountToken, id);
-    const $content = document.getElementById('share-modal-content')!;
+    const [, token] = await Promise.all([
+      saveToCloud(accountToken, ownJournals),
+      createShareToken(accountToken, id),
+    ]);
     $content.innerHTML = `
       <div style="margin-bottom:16px;">
         <div style="font-size:14px;font-weight:bold;margin-bottom:4px;">Full access (view + edit)</div>
@@ -188,8 +177,7 @@ export async function handleShareJournal(id: string): Promise<void> {
         </div>
       </div>
     `;
-    document.getElementById('share-modal')!.style.display = 'flex';
   } catch (err: any) {
-    alert('Failed to create share link: ' + err.message);
+    $content.innerHTML = `<div style="color:var(--red);font-size:14px;">Failed to create share link: ${err.message}</div>`;
   }
 }

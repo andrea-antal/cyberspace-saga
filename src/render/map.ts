@@ -1,4 +1,4 @@
-import { viewState, getJournal } from '../state';
+import { viewState, getJournal, isOwnJournal, canDelete } from '../state';
 import { render } from '../main';
 import { esc } from '../util';
 import type { Page } from '../types';
@@ -50,5 +50,15 @@ export function renderMap($page: HTMLElement): void {
   }
 
   html += '</div>';
+
+  html += '<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">';
+  if (isOwnJournal(j.id)) {
+    html += `<button class="btn btn-small" style="font-size:12pt;" data-action="share-journal" data-id="${j.id}">Share</button>`;
+  }
+  if (canDelete(j.id)) {
+    html += `<button class="btn btn-small btn-danger" style="font-size:12pt;border-color:var(--cream-shadow);" data-action="delete-journal" data-id="${j.id}">Delete</button>`;
+  }
+  html += '</div>';
+
   $page.innerHTML = html;
 }

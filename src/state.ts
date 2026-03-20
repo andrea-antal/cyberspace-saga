@@ -4,7 +4,7 @@ const STORAGE_KEY = 'cyoa-decision-journal';
 const API_KEY_KEY = 'cyoa-api-key';
 const ACCOUNT_TOKEN_KEY = 'cyoa-account-token';
 const SHARED_JOURNALS_KEY = 'cyoa-shared-journals';
-const MODEL_KEY = 'cyoa-model';
+const BYOK_MODEL_KEY = 'cyoa-byok-model';
 export const BM_COLORS = 5;
 
 // --- Persistence ---
@@ -69,25 +69,16 @@ export function saveSharedJournals(shared: SharedJournalMeta[]): void {
   localStorage.setItem(SHARED_JOURNALS_KEY, JSON.stringify(shared));
 }
 
-export const MODEL_OPTIONS = {
-  sonnet: 'claude-sonnet-4-6',
-  opus: 'claude-opus-4-6',
-} as const;
-
-export type ModelChoice = keyof typeof MODEL_OPTIONS;
-
-export function loadModelChoice(): ModelChoice {
-  const val = localStorage.getItem(MODEL_KEY);
-  if (val === 'opus') return 'opus';
-  return 'sonnet';
+export function loadByokModel(): 'sonnet' | 'opus' {
+  return localStorage.getItem(BYOK_MODEL_KEY) === 'opus' ? 'opus' : 'sonnet';
 }
 
-export function saveModelChoice(choice: ModelChoice): void {
-  localStorage.setItem(MODEL_KEY, choice);
+export function saveByokModel(model: 'sonnet' | 'opus'): void {
+  localStorage.setItem(BYOK_MODEL_KEY, model);
 }
 
-export function getModelId(): string {
-  return MODEL_OPTIONS[loadModelChoice()];
+export function getActiveModel(): string {
+  return loadByokModel() === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6';
 }
 
 export function getSharedMeta(journalId: string): SharedJournalMeta | undefined {

@@ -10,8 +10,18 @@ export function parseGeneratedTree(raw: string): Record<number, Page> {
   let parsed: any;
   try {
     parsed = JSON.parse(cleaned);
-  } catch (e) {
-    throw new Error('AI returned invalid JSON. Try again.');
+  } catch {
+    // Try to extract JSON object from surrounding text
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        throw new Error('AI returned invalid JSON. Try again.');
+      }
+    } else {
+      throw new Error('AI returned invalid JSON. Try again.');
+    }
   }
 
   if (!parsed.pages || typeof parsed.pages !== 'object') {

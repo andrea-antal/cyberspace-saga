@@ -1,4 +1,4 @@
-import { loadApiKey, getModelId } from '../state';
+import { loadApiKey, getActiveModel } from '../state';
 import { INTERVIEW_SYSTEM_PROMPT, GENERATE_SYSTEM_PROMPT, REGENERATE_SYSTEM_PROMPT } from './prompt';
 import type { ConversationMessage } from '../types';
 
@@ -14,7 +14,7 @@ async function callApi(systemPrompt: string, messages: { role: string; content: 
       'Content-Type': 'application/json',
       'X-API-Key': apiKey,
     },
-    body: JSON.stringify({ system: systemPrompt, messages, model: getModelId() }),
+    body: JSON.stringify({ system: systemPrompt, messages, model: getActiveModel() }),
   });
 
   if (!res.ok) {

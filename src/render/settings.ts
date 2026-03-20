@@ -1,4 +1,4 @@
-import { appState, loadApiKey, saveApiKey, loadAccountToken, saveAccountToken, isOwnJournal, persist, loadModelChoice, saveModelChoice } from '../state';
+import { appState, loadApiKey, saveApiKey, loadAccountToken, saveAccountToken, isOwnJournal, persist, loadByokModel, saveByokModel } from '../state';
 import { render } from '../main';
 import { escAttr } from '../util';
 import { createAccount, saveToCloud, loadFromCloud } from '../cloud';
@@ -7,13 +7,9 @@ export function renderSettings($page: HTMLElement): void {
   const key = loadApiKey();
   const masked = key ? key.slice(0, 10) + '...' + key.slice(-4) : '';
 
-  let html = '<div class="nav-bar">';
-  html += '<span class="nav-link" data-action="go-shelf">&larr; Back</span>';
-  html += '</div>';
+  let html = '<div style="font-size:18px;font-weight:bold;margin-bottom:16px;">Settings</div>';
 
-  html += '<div style="font-size:18px;font-weight:bold;margin-bottom:16px;">Settings</div>';
-
-  // API Key section
+  // --- API Key section ---
   html += '<div style="margin-bottom:24px;">';
   html += '<div style="font-size:14px;font-weight:bold;margin-bottom:8px;">Anthropic API Key</div>';
   html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">Required for AI features. Your key is stored in your browser only — never sent to our servers. Get one at <a href="https://console.anthropic.com" target="_blank" style="color:var(--choice-red)">console.anthropic.com</a></div>';
@@ -24,14 +20,28 @@ export function renderSettings($page: HTMLElement): void {
 
   html += `<input type="password" class="edit-textarea choice-input" id="api-key-input" value="${escAttr(key)}" placeholder="sk-ant-..." style="width:100%;height:40px;font-family:monospace;font-size:14px;">`;
   html += '<div style="margin-top:10px;display:flex;gap:8px;">';
-  html += '<button class="btn btn-primary btn-small" data-action="save-api-key">Save Key</button>';
+  html += '<button class="btn btn-active btn-small" data-action="save-api-key">Save Key</button>';
   if (key) {
     html += '<button class="btn btn-small btn-danger" data-action="clear-api-key">Remove Key</button>';
   }
   html += '</div>';
+
+  if (key) {
+    const byokModel = loadByokModel();
+    html += '<div style="margin-top:14px;">';
+    html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:6px;">Model</div>';
+    html += '<div style="display:flex;gap:8px;align-items:center;">';
+    html += `<button class="btn btn-small ${byokModel === 'sonnet' ? 'btn-active' : ''}" data-action="toggle-byok-model" data-model="sonnet" style="min-width:80px;">Sonnet</button>`;
+    html += `<button class="btn btn-small ${byokModel === 'opus' ? 'btn-active' : ''}" data-action="toggle-byok-model" data-model="opus" style="min-width:80px;">Opus</button>`;
+    html += '<span id="byok-model-notice" style="font-size:13px;color:var(--text-light);opacity:0;transition:opacity 0.3s;margin-left:8px;"></span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:var(--text-light);margin-top:6px;">Opus is more capable but slower and more expensive.</div>';
+    html += '</div>';
+  }
+
   html += '</div>';
 
-  // Cloud Backup section
+  // --- Cloud Backup section ---
   html += '<div style="margin-bottom:24px;padding-top:20px;border-top:1px solid var(--cream-dark);">';
   html += '<div style="font-size:14px;font-weight:bold;margin-bottom:8px;">Cloud Backup</div>';
   html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">Back up your decisions to the cloud and restore them on any device. No account needed — just a token.</div>';
@@ -40,12 +50,12 @@ export function renderSettings($page: HTMLElement): void {
   if (accountToken) {
     html += `<div style="font-size:13px;color:var(--text-light);margin-bottom:8px;">Your token: <code>${accountToken}</code></div>`;
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-    html += '<button class="btn btn-primary btn-small" data-action="save-to-cloud">Sync to Cloud</button>';
+    html += '<button class="btn btn-active btn-small" data-action="save-to-cloud">Sync to Cloud</button>';
     html += '<button class="btn btn-small" data-action="copy-account-token">Copy Token</button>';
     html += '<button class="btn btn-small btn-danger" data-action="disconnect-account">Disconnect</button>';
     html += '</div>';
   } else {
-    html += '<button class="btn btn-primary btn-small" data-action="generate-account-token">Create Backup</button>';
+    html += '<button class="btn btn-active btn-small" data-action="generate-account-token">Create Backup</button>';
     html += '<div style="margin-top:12px;">';
     html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:6px;">Already have a token?</div>';
     html += '<div style="display:flex;gap:8px;">';
@@ -56,15 +66,14 @@ export function renderSettings($page: HTMLElement): void {
   }
   html += '</div>';
 
-  // Model selection
+  // --- Import Shared section ---
   html += '<div style="margin-bottom:24px;padding-top:20px;border-top:1px solid var(--cream-dark);">';
-  html += '<div style="font-size:14px;font-weight:bold;margin-bottom:8px;">AI Model</div>';
-  const currentModel = loadModelChoice();
+  html += '<div style="font-size:14px;font-weight:bold;margin-bottom:8px;">Import Shared Decision</div>';
+  html += '<div style="font-size:13px;color:var(--text-light);margin-bottom:10px;">Paste a share token from someone else to import their decision.</div>';
   html += '<div style="display:flex;gap:8px;">';
-  html += `<button class="btn btn-small ${currentModel === 'sonnet' ? 'btn-primary' : ''}" data-action="set-model" data-model="sonnet">Sonnet</button>`;
-  html += `<button class="btn btn-small ${currentModel === 'opus' ? 'btn-primary' : ''}" data-action="set-model" data-model="opus">Opus</button>`;
+  html += '<input type="text" class="edit-textarea choice-input" id="import-share-input" placeholder="Paste share token" style="flex:1;height:40px;">';
+  html += '<button class="btn btn-small" data-action="import-shared">Import</button>';
   html += '</div>';
-  html += '<div style="font-size:13px;color:var(--text-light);margin-top:6px;">Opus is more capable but slower and more expensive.</div>';
   html += '</div>';
 
   $page.innerHTML = html;
@@ -80,6 +89,24 @@ export function handleSaveApiKey(): void {
 export function handleClearApiKey(): void {
   saveApiKey('');
   render();
+}
+
+export function handleToggleByokModel(model: 'sonnet' | 'opus'): void {
+  saveByokModel(model);
+
+  // Update button states in-place
+  document.querySelectorAll<HTMLButtonElement>('[data-action="toggle-byok-model"]').forEach(btn => {
+    btn.classList.toggle('btn-active', btn.dataset.model === model);
+  });
+
+  // Flash confirmation notice
+  const notice = document.getElementById('byok-model-notice');
+  if (notice) {
+    const label = model === 'opus' ? 'Opus' : 'Sonnet';
+    notice.textContent = `Switched to ${label}`;
+    notice.style.opacity = '1';
+    setTimeout(() => { notice.style.opacity = '0'; }, 1500);
+  }
 }
 
 export async function handleGenerateAccountToken(): Promise<void> {
@@ -133,11 +160,4 @@ export function handleCopyAccountToken(): void {
 export function handleDisconnectAccount(): void {
   saveAccountToken('');
   render();
-}
-
-export function handleSetModel(choice: string): void {
-  if (choice === 'opus' || choice === 'sonnet') {
-    saveModelChoice(choice);
-    render();
-  }
 }

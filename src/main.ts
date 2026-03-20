@@ -1,9 +1,9 @@
 import { appState, viewState, persist, getJournal, resetInterviewState, loadSharedJournals, canEdit, canDelete } from './state';
 import { renderShelf, openJournal, deleteJournal, createJournal, createJournalFromAI, openJournalForAI, handleImportShared, handleShareJournal } from './render/shelf';
-import { renderPageView, renderPageEdit, saveEdit, addChoice, removeChoice, deletePage } from './render/page';
+import { renderPageView, renderPageEdit, saveEdit, addChoice, removeChoice, deletePage, getPendingKernelText, clearPendingKernelText } from './render/page';
 import { renderMap } from './render/map';
-import { renderInput, submitSituation, submitAnswer, skipInterview } from './render/input';
-import { renderSettings, handleSaveApiKey, handleClearApiKey, handleGenerateAccountToken, handleSaveToCloud, handleLoadFromCloud, handleCopyAccountToken, handleDisconnectAccount, handleSetModel } from './render/settings';
+import { renderInput, submitSituation, submitAnswer, skipInterview, regenerateFromKernel } from './render/input';
+import { renderSettings, handleSaveApiKey, handleClearApiKey, handleToggleByokModel, handleGenerateAccountToken, handleSaveToCloud, handleLoadFromCloud, handleCopyAccountToken, handleDisconnectAccount } from './render/settings';
 import { renderBookmarks, addBookmark, removeBookmark } from './render/bookmarks';
 import { regeneratePage } from './ai/client';
 import { parseRegeneratedPage } from './ai/parser';
@@ -19,10 +19,14 @@ const $modalTitle = document.getElementById('modal-title') as HTMLInputElement;
 const $aiModal = document.getElementById('ai-modal')!;
 const $aiModalContent = document.getElementById('ai-modal-content')!;
 const $shareModal = document.getElementById('share-modal')!;
+const $deleteModal = document.getElementById('delete-modal')!;
+const $deleteModalTitle = document.getElementById('delete-modal-title')!;
+const $regenModal = document.getElementById('regen-modal')!;
+let pendingDeleteId: string | null = null;
 
 export function render(): void {
   // Toggle cover curl visibility
-  const isInterior = viewState.view !== 'shelf' && viewState.view !== 'settings';
+  const isInterior = viewState.view !== 'shelf';
   $book.classList.toggle('interior', isInterior);
 
   switch (viewState.view) {
@@ -32,6 +36,12 @@ export function render(): void {
     case 'input': renderInput($page); break;
     case 'settings': renderSettings($page); break;
   }
+
+  // Mobile back-to-cover link (visible only on narrow viewports via CSS)
+  if (isInterior && !viewState.editMode) {
+    $page.insertAdjacentHTML('afterbegin', '<div class="mobile-back" data-action="go-shelf">&larr; Back to cover</div>');
+  }
+
   renderBookmarks($bookmarks);
 }
 
@@ -40,17 +50,16 @@ function showAiModal(): void {
 
   // New decision option
   html += '<div style="margin-bottom:16px;">';
-  html += '<label for="ai-modal-title" style="font-size:14px;color:var(--text-light);display:block;margin-bottom:6px;">Start a new decision</label>';
   html += '<div style="display:flex;gap:8px;">';
   html += '<input type="text" id="ai-modal-title" class="edit-textarea choice-input" style="flex:1;height:40px;" placeholder="Should I take the job at StartupCo?">';
-  html += '<button class="btn btn-primary" data-action="ai-new-journal">Go</button>';
+  html += '<button class="btn btn-primary btn-small" data-action="ai-new-journal">Go</button>';
   html += '</div>';
   html += '</div>';
 
   // Existing journals
   if (appState.journals.length > 0) {
     html += '<div style="border-top:1px solid var(--cream-dark);padding-top:14px;">';
-    html += '<div style="font-size:14px;color:var(--text-light);margin-bottom:10px;">Or explore an existing decision</div>';
+    html += '<div style="font-size:14px;color:var(--text-light);margin-bottom:10px;">Explore an existing adventure</div>';
     html += '<ul class="shelf-list">';
     appState.journals.forEach(j => {
       const pageCount = Object.keys(j.pages).length;
@@ -72,6 +81,17 @@ function showAiModal(): void {
     if (input) input.focus();
   }, 50);
 }
+
+// --- Click outside modal to close ---
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      (overlay as HTMLElement).style.display = 'none';
+      pendingDeleteId = null;
+      clearPendingKernelText();
+    }
+  });
+});
 
 // --- Event delegation ---
 document.addEventListener('click', (e) => {
@@ -222,14 +242,30 @@ document.addEventListener('click', (e) => {
     }
     case 'open-journal':
       openJournal(target.dataset.id!);
-      pushHistory();
-      window.scrollTo(0, 0);
+      requestAnimationFrame(() => { window.scrollTo(0, 0); pushHistory(); });
       break;
-    case 'delete-journal':
+    case 'delete-journal': {
       e.stopPropagation();
-      if (!canDelete(target.dataset.id!)) break;
-      deleteJournal(target.dataset.id!);
-      pushHistory();
+      const delId = target.dataset.id!;
+      if (!canDelete(delId)) break;
+      const delJournal = getJournal(delId);
+      if (!delJournal) break;
+      pendingDeleteId = delId;
+      $deleteModalTitle.textContent = delJournal.title;
+      $deleteModal.style.display = 'flex';
+      break;
+    }
+    case 'close-delete-modal':
+      pendingDeleteId = null;
+      $deleteModal.style.display = 'none';
+      break;
+    case 'confirm-delete':
+      if (pendingDeleteId) {
+        deleteJournal(pendingDeleteId);
+        pushHistory();
+      }
+      pendingDeleteId = null;
+      $deleteModal.style.display = 'none';
       break;
     case 'submit-situation':
       submitSituation();
@@ -245,6 +281,11 @@ document.addEventListener('click', (e) => {
       break;
     case 'clear-api-key':
       handleClearApiKey();
+      break;
+    case 'toggle-byok-model':
+      if (target.dataset.model === 'sonnet' || target.dataset.model === 'opus') {
+        handleToggleByokModel(target.dataset.model);
+      }
       break;
     case 'regenerate-page':
       handleRegenerate();
@@ -273,9 +314,6 @@ document.addEventListener('click', (e) => {
     case 'disconnect-account':
       handleDisconnectAccount();
       break;
-    case 'set-model':
-      handleSetModel(target.dataset.model || '');
-      break;
     case 'import-shared':
       handleImportShared();
       break;
@@ -293,6 +331,38 @@ document.addEventListener('click', (e) => {
     case 'copy-share-view': {
       const el = document.getElementById('share-token-view');
       if (el) navigator.clipboard.writeText(el.textContent || '');
+      break;
+    }
+    case 'close-regen-modal':
+      $regenModal.style.display = 'none';
+      clearPendingKernelText();
+      break;
+    case 'regen-just-save': {
+      const j = getJournal();
+      const text = getPendingKernelText();
+      if (j && text !== null) {
+        j.situation = text;
+        persist();
+      }
+      clearPendingKernelText();
+      $regenModal.style.display = 'none';
+      viewState.editMode = false;
+      render();
+      break;
+    }
+    case 'regen-confirm': {
+      const j = getJournal();
+      const text = getPendingKernelText();
+      if (j && text !== null) {
+        j.situation = text;
+        persist();
+        clearPendingKernelText();
+        $regenModal.style.display = 'none';
+        viewState.editMode = false;
+        viewState.view = 'input';
+        render();
+        regenerateFromKernel(text);
+      }
       break;
     }
   }
@@ -510,7 +580,8 @@ function initFromUrl(): void {
       viewState.view = 'input';
     } else if (pageNum) {
       viewState.view = 'page';
-      viewState.currentPage = parseInt(pageNum) || 1;
+      const parsed = parseInt(pageNum);
+      viewState.currentPage = isNaN(parsed) ? 1 : parsed;
     } else {
       viewState.view = 'page';
       viewState.currentPage = 1;
