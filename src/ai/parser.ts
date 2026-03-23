@@ -1,27 +1,14 @@
 import type { Page } from '../types';
+import { repairJSON } from './repair';
 
 export function parseGeneratedTree(raw: string): Record<number, Page> {
-  // Strip markdown code fences if present
-  let cleaned = raw.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
+  const cleaned = repairJSON(raw);
 
   let parsed: any;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    // Try to extract JSON object from surrounding text
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0]);
-      } catch {
-        throw new Error('AI returned invalid JSON. Try again.');
-      }
-    } else {
-      throw new Error('AI returned invalid JSON. Try again.');
-    }
+    throw new Error('AI returned invalid JSON. Try again.');
   }
 
   if (!parsed.pages || typeof parsed.pages !== 'object') {
@@ -71,12 +58,61 @@ export function parseGeneratedTree(raw: string): Record<number, Page> {
   return pages;
 }
 
-export function parseRegeneratedPage(raw: string): { content: string; confidence?: 'high' | 'medium' | 'low' } {
-  let cleaned = raw.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+export interface SkeletonPage {
+  summary: string;
+  choices: { text: string; page: number }[];
+  isEnding: boolean;
+  type: 'fact' | 'decision' | 'scenario' | 'ending';
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+export interface Skeleton {
+  title: string;
+  pages: Record<number, SkeletonPage>;
+}
+
+export function parseSkeleton(raw: string): Skeleton {
+  const cleaned = repairJSON(raw);
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error('AI returned invalid structure. Try again.');
   }
 
+  if (!parsed.pages || typeof parsed.pages !== 'object') {
+    throw new Error('AI response missing pages. Try again.');
+  }
+
+  const pages: Record<number, SkeletonPage> = {};
+
+  for (const [key, value] of Object.entries(parsed.pages)) {
+    const pageNum = parseInt(key);
+    if (isNaN(pageNum)) continue;
+
+    const raw = value as any;
+    pages[pageNum] = {
+      summary: String(raw.summary || ''),
+      choices: Array.isArray(raw.choices) ? raw.choices.map((c: any) => ({
+        text: String(c.text || ''),
+        page: Number(c.page),
+      })).filter((c: { text: string; page: number }) => !isNaN(c.page)) : [],
+      isEnding: Boolean(raw.isEnding),
+      type: validateType(raw.type),
+      confidence: validateConfidence(raw.confidence),
+    };
+  }
+
+  if (!pages[1]) {
+    throw new Error('AI response missing page 1. Try again.');
+  }
+
+  return { title: parsed.title || 'Untitled', pages };
+}
+
+export function parseRegeneratedPage(raw: string): { content: string; confidence?: 'high' | 'medium' | 'low' } {
+  const cleaned = repairJSON(raw);
   const parsed = JSON.parse(cleaned);
   return {
     content: String(parsed.content || ''),

@@ -25,6 +25,7 @@ export interface Journal {
   pages: Record<number, Page>;
   bookmarks: number[];
   situation?: string;
+  kernel?: ConversationMessage[];
 }
 
 export interface AppState {
@@ -33,7 +34,7 @@ export interface AppState {
   apiKey?: string;
 }
 
-export type ViewName = 'shelf' | 'page' | 'map' | 'input' | 'settings';
+export type ViewName = 'shelf' | 'page' | 'map' | 'input' | 'settings' | 'leaderboard' | 'profile';
 
 export interface ViewState {
   view: ViewName;

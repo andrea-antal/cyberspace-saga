@@ -6,6 +6,14 @@ const REMEMBER_KEY_KEY = 'cyoa-remember-api-key';
 const ACCOUNT_TOKEN_KEY = 'cyoa-account-token';
 const SHARED_JOURNALS_KEY = 'cyoa-shared-journals';
 const BYOK_MODEL_KEY = 'cyoa-byok-model';
+export type Provider = 'anthropic' | 'openai';
+const GUIDE_DISMISSED_KEY = 'cyoa-guide-dismissed';
+const COVER_PREF_KEY = 'cyoa-cover-pref';
+const HIDE_COVER_ART_KEY = 'cyoa-hide-cover-art';
+const THEME_PREF_KEY = 'cyoa-theme-pref';
+const FONT_PREF_KEY = 'cyoa-font-pref';
+const LLM_MODE_KEY = 'cyoa-llm-mode';
+export type LlmMode = 'api' | 'local';
 export const BM_COLORS = 5;
 
 // --- Persistence ---
@@ -97,25 +105,116 @@ export function saveByokModel(model: 'sonnet' | 'opus'): void {
   localStorage.setItem(BYOK_MODEL_KEY, model);
 }
 
+export function detectProvider(key: string): Provider {
+  if (key.startsWith('sk-ant-')) return 'anthropic';
+  return 'openai';
+}
+
+export function isGuideDismissed(): boolean {
+  return localStorage.getItem(GUIDE_DISMISSED_KEY) === 'true';
+}
+
+export function dismissGuide(): void {
+  localStorage.setItem(GUIDE_DISMISSED_KEY, 'true');
+}
+
+export function showGuide(): void {
+  localStorage.removeItem(GUIDE_DISMISSED_KEY);
+}
+
+export function loadCoverPref(): string {
+  return localStorage.getItem(COVER_PREF_KEY) || 'random';
+}
+
+export function saveCoverPref(pref: string): void {
+  if (pref === 'random') {
+    localStorage.removeItem(COVER_PREF_KEY);
+  } else {
+    localStorage.setItem(COVER_PREF_KEY, pref);
+  }
+}
+
+export function loadHideCoverArt(): boolean {
+  return localStorage.getItem(HIDE_COVER_ART_KEY) === 'true';
+}
+
+export function saveHideCoverArt(hide: boolean): void {
+  if (hide) {
+    localStorage.setItem(HIDE_COVER_ART_KEY, 'true');
+  } else {
+    localStorage.removeItem(HIDE_COVER_ART_KEY);
+  }
+}
+
+export type ThemeId = 'parchment' | 'midnight' | 'rose-quartz' | 'forest' | 'obsidian';
+export type FontId = 'classic' | 'editorial' | 'modern' | 'literary' | 'typewriter';
+
+export function loadThemePref(): ThemeId {
+  return (localStorage.getItem(THEME_PREF_KEY) as ThemeId) || 'parchment';
+}
+
+export function saveThemePref(theme: ThemeId): void {
+  if (theme === 'parchment') {
+    localStorage.removeItem(THEME_PREF_KEY);
+  } else {
+    localStorage.setItem(THEME_PREF_KEY, theme);
+  }
+}
+
+export function loadFontPref(): FontId {
+  return (localStorage.getItem(FONT_PREF_KEY) as FontId) || 'classic';
+}
+
+export function saveFontPref(font: FontId): void {
+  if (font === 'classic') {
+    localStorage.removeItem(FONT_PREF_KEY);
+  } else {
+    localStorage.setItem(FONT_PREF_KEY, font);
+  }
+}
+
+export function loadLlmMode(): LlmMode {
+  return localStorage.getItem(LLM_MODE_KEY) === 'local' ? 'local' : 'api';
+}
+
+export function saveLlmMode(mode: LlmMode): void {
+  if (mode === 'api') {
+    localStorage.removeItem(LLM_MODE_KEY);
+  } else {
+    localStorage.setItem(LLM_MODE_KEY, mode);
+  }
+}
+
 export function getActiveModel(): string {
-  return loadByokModel() === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6';
+  const key = loadApiKey();
+  const tier = loadByokModel();
+  if (key && detectProvider(key) === 'openai') {
+    return tier === 'opus' ? 'gpt-5.4' : 'gpt-5.4-mini';
+  }
+  return tier === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6';
 }
 
 export function getSharedMeta(journalId: string): SharedJournalMeta | undefined {
   return loadSharedJournals().find(s => s.journalId === journalId);
 }
 
+// Standalone journals are loaded in memory only — not persisted, not editable
+export const standaloneIds = new Set<string>();
+
 export function isOwnJournal(journalId: string): boolean {
+  if (standaloneIds.has(journalId)) return false;
   return !getSharedMeta(journalId);
 }
 
 export function canEdit(journalId: string): boolean {
+  if (standaloneIds.has(journalId)) return false;
   const meta = getSharedMeta(journalId);
   if (!meta) return true;
   return meta.permission === 'edit';
 }
 
 export function canDelete(journalId: string): boolean {
+  if (standaloneIds.has(journalId)) return false;
   return isOwnJournal(journalId);
 }
 

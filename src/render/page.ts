@@ -1,8 +1,9 @@
-import { viewState, getJournal, nextPageNum, persist, BM_COLORS, canEdit, getSharedMeta } from '../state';
+import { viewState, getJournal, nextPageNum, persist, BM_COLORS, canEdit, getSharedMeta, standaloneIds, loadAccountToken, isOwnJournal } from '../state';
 import { render } from '../main';
 import { esc, escAttr } from '../util';
-import type { Page } from '../types';
-import { updateShared } from '../cloud';
+import type { Page, ConversationMessage } from '../types';
+import { updateShared, likeJournal, unlikeJournal, getLikeStatus } from '../cloud';
+import { syncToCloudIfNeeded } from '../sync';
 
 let _pendingKernelText: string | null = null;
 
@@ -18,8 +19,20 @@ function renderKernelView($page: HTMLElement): void {
   html += `<span class="nav-title" data-action="go-map">${esc(j.title)}</span>`;
   html += '</div>';
 
-  const kernelText = j.situation || 'No situation recorded for this adventure.';
-  html += `<div class="page-content page-paper-fact">${esc(kernelText)}</div>`;
+  if (j.kernel && j.kernel.length > 0) {
+    html += '<div class="page-content page-paper-fact">';
+    for (const msg of j.kernel) {
+      if (msg.role === 'user') {
+        html += `<div class="kernel-msg kernel-user"><strong>You:</strong> ${esc(msg.content)}</div>`;
+      } else {
+        html += `<div class="kernel-msg kernel-assistant"><span class="ai-response-icon">🤖</span>${esc(msg.content).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</div>`;
+      }
+    }
+    html += '</div>';
+  } else {
+    const kernelText = j.situation || 'No situation recorded for this adventure.';
+    html += `<div class="page-content page-paper-fact">${esc(kernelText)}</div>`;
+  }
 
   html += '<div class="page-choices">';
   html += '<div class="page-choice">';
@@ -83,7 +96,18 @@ export function renderPageView($page: HTMLElement): void {
   const j = getJournal();
   if (!j) { viewState.view = 'shelf'; render(); return; }
 
-  if (viewState.currentPage === 0) { renderKernelView($page); return; }
+  const isStandalone = standaloneIds.has(j.id);
+
+  if (viewState.currentPage === 0) {
+    if (isStandalone) {
+      // Standalone: skip p0, show cover instead
+      viewState.view = 'shelf';
+      render();
+      return;
+    }
+    renderKernelView($page);
+    return;
+  }
 
   const pg = j.pages[viewState.currentPage];
   if (!pg) { viewState.view = 'shelf'; render(); return; }
@@ -95,8 +119,10 @@ export function renderPageView($page: HTMLElement): void {
   let html = '<div class="nav-bar">';
   if (prevPage !== null) {
     html += `<span class="nav-link" data-action="go-back">&larr; p.${prevPage}</span>`;
-  } else if (viewState.currentPage === 1) {
+  } else if (viewState.currentPage === 1 && !isStandalone) {
     html += `<span class="nav-link" data-action="go-page" data-page="0">&larr; p.0</span>`;
+  } else if (viewState.currentPage === 1 && isStandalone) {
+    html += `<span class="nav-link" data-action="go-back">&larr; Cover</span>`;
   } else {
     html += '<span></span>';
   }
@@ -104,8 +130,8 @@ export function renderPageView($page: HTMLElement): void {
   html += '</div>';
 
   // Page type indicator
-  if (pg.type && pg.type !== 'fact') {
-    const label = pg.type === 'decision' ? 'Decision point' : pg.type === 'scenario' ? 'One possible future' : 'Ending';
+  if (pg.type && pg.type !== 'fact' && pg.type !== 'ending') {
+    const label = pg.type === 'decision' ? 'Decision point' : 'One possible future';
     html += `<div class="page-type-indicator type-${pg.type}">${label}`;
     if (pg.confidence && pg.type === 'scenario') {
       html += ` <span class="confidence-badge confidence-${pg.confidence}">${pg.confidence} confidence</span>`;
@@ -120,6 +146,8 @@ export function renderPageView($page: HTMLElement): void {
   const pageClass = `page-content page-paper-${pg.type || 'fact'}`;
   if (pg.content) {
     html += `<div class="${pageClass}">${esc(pg.content)}</div>`;
+  } else if (pg.source === 'ai') {
+    html += `<div class="${pageClass} empty" style="font-style:italic;color:var(--text-light);">Generating...</div>`;
   } else {
     html += `<div class="${pageClass} empty">This page is blank. What happens on this path?</div>`;
   }
@@ -137,6 +165,14 @@ export function renderPageView($page: HTMLElement): void {
 
   if (pg.isEnding) {
     html += '<div class="page-ending">THE END</div>';
+    if (!isOwnJournal(j.id)) {
+      html += `<div style="text-align:center;margin-top:12px;">`;
+      if (!!loadAccountToken()) {
+        html += `<button class="btn-link" data-action="toggle-like" data-id="${j.id}" id="like-btn" style="font-size:14px;">&#9825; Like</button>`;
+      }
+      html += `<span id="like-count" style="font-size:13px;color:var(--text-light);margin-left:6px;"></span>`;
+      html += `</div>`;
+    }
   }
 
   html += '<div class="page-actions">';
@@ -168,6 +204,49 @@ export function renderPageView($page: HTMLElement): void {
   html += `<div class="page-number">&mdash; ${viewState.currentPage} &mdash;</div>`;
 
   $page.innerHTML = html;
+
+  // Fetch like status on ending pages for non-owned stories (only if has account token)
+  if (pg.isEnding && !isOwnJournal(j.id) && !!loadAccountToken()) {
+    const token = loadAccountToken() || null;
+    getLikeStatus(token, j.id).then(({ liked, count }) => {
+      const btn = document.getElementById('like-btn');
+      const countEl = document.getElementById('like-count');
+      if (btn) {
+        btn.innerHTML = liked ? '&#9829; Liked' : '&#9825; Like';
+        btn.dataset.liked = liked ? '1' : '0';
+      }
+      if (countEl && count > 0) {
+        countEl.textContent = `${count}`;
+      }
+    }).catch(() => {});
+  }
+}
+
+export async function handleToggleLike(journalId: string): Promise<void> {
+  const token = loadAccountToken();
+  if (!token) return;
+
+  const btn = document.getElementById('like-btn');
+  const countEl = document.getElementById('like-count');
+  const isLiked = btn?.dataset.liked === '1';
+
+  try {
+    const result = isLiked
+      ? await unlikeJournal(token, journalId)
+      : await likeJournal(token, journalId);
+
+    if (btn) {
+      btn.innerHTML = result.liked ? '&#9829; Liked' : '&#9825; Like';
+      btn.dataset.liked = result.liked ? '1' : '0';
+    }
+    if (countEl) {
+      countEl.textContent = result.count > 0 ? `${result.count}` : '';
+    }
+  } catch (err: any) {
+    if (err.message?.includes('cannot receive likes')) {
+      if (btn) btn.style.display = 'none';
+    }
+  }
 }
 
 export function renderPageEdit($page: HTMLElement): void {
@@ -197,7 +276,7 @@ export function renderPageEdit($page: HTMLElement): void {
     pg.choices.forEach((c, i) => {
       html += `<div class="edit-choice-row">
         <input class="edit-textarea choice-input" style="flex:1" value="${escAttr(c.text)}" data-choice-idx="${i}" placeholder="If you decide to...">
-        <span class="choice-page-num">&rarr; p.${c.page}</span>
+        <a class="choice-page-link" data-action="edit-navigate" data-page="${c.page}">&rarr; p.${c.page}</a>
         <button class="btn btn-small btn-danger" data-action="remove-choice" data-idx="${i}" title="Remove">&times;</button>
       </div>`;
     });
@@ -243,6 +322,7 @@ export function saveEdit(): void {
   });
 
   persist();
+  syncToCloudIfNeeded();
   // Sync shared journal edits back to cloud
   const sharedMeta = getSharedMeta(j.id);
   if (sharedMeta && sharedMeta.permission === 'edit') {
@@ -281,6 +361,7 @@ export function addChoice(): void {
   pg.choices.push({ text: 'If you decide to...', page: newPageNum });
   j.pages[newPageNum] = { content: '', choices: [], isEnding: false, type: 'decision', source: 'user' };
   persist();
+  syncToCloudIfNeeded();
   render();
 }
 
@@ -307,6 +388,7 @@ export function removeChoice(idx: number): void {
   }
 
   persist();
+  syncToCloudIfNeeded();
   render();
 }
 
@@ -325,6 +407,7 @@ export function deletePage(): void {
   if (j.bookmarks) j.bookmarks = j.bookmarks.filter(b => b !== viewState.currentPage);
 
   persist();
+  syncToCloudIfNeeded();
   viewState.editMode = false;
   viewState.view = 'shelf';
   render();

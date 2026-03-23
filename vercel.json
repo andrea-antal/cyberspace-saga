@@ -2,6 +2,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/@:username([a-z0-9][a-z0-9_-]*)", "destination": "/index.html" },
+    { "source": "/:slug([a-z0-9][a-z0-9-]*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

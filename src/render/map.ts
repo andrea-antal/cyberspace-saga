@@ -1,4 +1,4 @@
-import { viewState, getJournal, isOwnJournal, canDelete } from '../state';
+import { viewState, getJournal, isOwnJournal, canDelete, standaloneIds } from '../state';
 import { render } from '../main';
 import { esc } from '../util';
 import type { Page } from '../types';
@@ -38,8 +38,9 @@ export function renderMap($page: HTMLElement): void {
   renderTree(1, 0);
 
   // Orphan pages
+  const isStandalone = standaloneIds.has(j.id);
   const allPages = Object.keys(j.pages).map(Number).sort((a, b) => a - b);
-  const orphans = allPages.filter(p => !visited.has(p));
+  const orphans = allPages.filter(p => !visited.has(p) && !(isStandalone && p === 0));
   if (orphans.length > 0) {
     html += '<div style="margin-top:18px;font-size:13px;color:var(--text-light);border-top:1px solid var(--cream-dark);padding-top:12px;">Unreachable pages:</div>';
     orphans.forEach(p => {
@@ -51,14 +52,18 @@ export function renderMap($page: HTMLElement): void {
 
   html += '</div>';
 
-  html += '<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">';
-  if (isOwnJournal(j.id)) {
-    html += `<button class="btn btn-small" style="font-size:12pt;" data-action="share-journal" data-id="${j.id}">Share</button>`;
+  if (!isStandalone) {
+    html += '<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">';
+    if (isOwnJournal(j.id)) {
+      html += `<button class="btn btn-small" style="font-size:12pt;" data-action="rename-journal" data-id="${j.id}">Rename</button>`;
+      html += `<button class="btn btn-small" style="font-size:12pt;" data-action="share-journal" data-id="${j.id}">Share</button>`;
+      html += `<button class="btn btn-small" style="font-size:12pt;" data-action="export-journal" data-id="${j.id}">Export</button>`;
+    }
+    if (canDelete(j.id)) {
+      html += `<button class="btn btn-small btn-danger" style="font-size:12pt;border-color:var(--cream-shadow);" data-action="delete-journal" data-id="${j.id}">Delete</button>`;
+    }
+    html += '</div>';
   }
-  if (canDelete(j.id)) {
-    html += `<button class="btn btn-small btn-danger" style="font-size:12pt;border-color:var(--cream-shadow);" data-action="delete-journal" data-id="${j.id}">Delete</button>`;
-  }
-  html += '</div>';
 
   $page.innerHTML = html;
 }
